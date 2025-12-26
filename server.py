@@ -21,7 +21,7 @@ def search_station(keyword: str) -> str:
         keyword: 검색할 정류장 이름 (예: 강남역)
     """
     # 국토교통부 정류소 검색 API
-    url = "http://apis.data.go.kr/1613000/BusSttnInfoInqireService/getSttnNoList"
+    url = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getSttnNoList"
     
     # 1005번 버스는 경기(31) 버스지만 서울(11) 정류장에도 섭니다.
     # 정확도를 위해 서울(11)과 경기(31)를 모두 검색해보는 게 좋습니다.
