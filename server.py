@@ -100,34 +100,52 @@ def check_arrival(city_code: str, station_id: str) -> str:
         return f"도착 정보 조회 실패: {str(e)}"
 
 
+
 if __name__ == "__main__":
     import uvicorn
+    import os
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
     
-    # 1. FastMCP 내부의 진짜 서버 객체를 꺼냅니다.
-    # (에러 로그가 알려준 _mcp_server 속성을 사용합니다)
+    # 1. FastMCP의 진짜 본체(Server)를 가져옵니다.
     server = mcp._mcp_server
+    
+    # 2. SSE 통신을 담당할 우체부(Transport)를 만듭니다.
+    # [중요] 주소는 "/sse" 입니다.
+    sse = SseServerTransport("/sse")
 
-    async def handle_sse(request):
-        # SSE 통신을 위한 연결 통로 설정
-        transport = SseServerTransport("/sse")
-        async with transport.connect_sse(request.scope, request.receive, request._send) as streams:
+    async def handle_sse_connect(request):
+        """
+        [GET 요청 처리]
+        AI가 처음 접속해서 "연결해주세요~" 할 때 작동합니다.
+        """
+        print(f"🔌 AI 접속 시도! (Client connected)")
+        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+            # 스트림을 열고 서버를 실행합니다.
             await server.run(
                 streams[0], streams[1], server.create_initialization_options()
             )
 
-    # 2. 웹 서버(Starlette)를 직접 만듭니다.
+    async def handle_sse_message(request):
+        """
+        [POST 요청 처리] - 여기가 핵심! 405 에러 해결사
+        AI가 연결된 상태에서 "강남역 찾아줘"라고 명령(JSON)을 보낼 때 작동합니다.
+        """
+        print(f"AI 메시지 수신! (POST request)")
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+
+    # 3. 웹 서버(Starlette)를 만들고 문을 두 개 엽니다. (GET, POST)
     starlette_app = Starlette(
         debug=True,
-        routes=[Route("/sse", endpoint=handle_sse)]
+        routes=[
+            Route("/sse", endpoint=handle_sse_connect, methods=["GET"]),
+            Route("/sse", endpoint=handle_sse_message, methods=["POST"]) # 👈 이 줄이 없어서 405가 떴던 겁니다!
+        ]
     )
 
-    # 3. Render에서 주는 포트 번호를 받습니다.
+    # 4. Render 포트 설정
     port = int(os.environ.get("PORT", 8000))
     
-    print(f"Render 배포용 서버 시작! (0.0.0.0:{port})")
-    
-    # 4. 강제로 0.0.0.0 주소로 실행합니다.
+    print(f"[최종 수정] 서버가 0.0.0.0:{port} 에서 시작됩니다.")
     uvicorn.run(starlette_app, host="0.0.0.0", port=port)
