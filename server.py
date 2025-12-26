@@ -105,10 +105,11 @@ def check_arrival(city_code: str, station_id: str) -> str:
         return f"도착 정보 조회 실패: {str(e)}"
     
 
-
 if __name__ == "__main__":
-    # 'sse'는 웹 브라우저로 접속할 수 있게 해주는 모드
-    mcp.run(transport='sse')
-
-
-app = mcp._http_server
+    import os
+    # 1. 렌더(Render)가 제공하는 포트 번호를 받아옵니다. (없으면 8000)
+    port = int(os.environ.get("PORT", 8000))
+    
+    # 2. '0.0.0.0'으로 설정해야 외부(카카오)에서 접속할 수 있습니다.
+    # 직접 실행 명령을 내립니다.
+    mcp.run(transport='sse', host='0.0.0.0', port=port)
