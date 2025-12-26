@@ -57,33 +57,53 @@ def check_arrival(city_code: str, station_id: str) -> str:
     except Exception as e: return f"에러: {str(e)}"
 
 # =================================================================
-# 👇 [만능 접속 코드] /sse, /messages 모두 허용 + 로그 출력
+# Crash 방지 패치
 # =================================================================
+
+
 if __name__ == "__main__":
     import uvicorn
+    import os
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
+    from starlette.responses import Response
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
-    from starlette.responses import JSONResponse
 
+    # 1. FastMCP 본체 가져오기
     server = mcp._mcp_server
     sse = SseServerTransport("/sse")
 
+    # [핵심] 이미 처리된 응답임을 알리는 특수 클래스
+    # (이게 없으면 "NoneType not callable" 에러가 납니다)
+    class AlreadyHandledResponse(Response):
+        async def __call__(self, scope, receive, send):
+            pass  # 이미 mcp 라이브러리가 응답을 보냈으니, Starlette은 아무것도 하지 마라!
+
     async def handle_sse_connect(request):
-        print(f"🔌 [접속 감지] 누군가 연결을 시도합니다! (GET {request.url.path})")
+        """[GET] AI 접속 (연결)"""
+        print(f"🔌 [GET] AI가 연결을 시도합니다.")
         async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
-            await server.run(streams[0], streams[1], server.create_initialization_options())
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+        # 연결이 끊어지면 빈 응답 반환
+        return AlreadyHandledResponse()
 
     async def handle_sse_message(request):
-        print(f"📩 [메시지 수신] 명령이 들어왔습니다! (POST {request.url.path})")
-        await sse.handle_post_message(request.scope, request.receive, request._send)
+        """[POST] AI 명령 (대화)"""
+        print(f"📩 [POST] 메시지가 도착했습니다.")
+        try:
+            await sse.handle_post_message(request.scope, request.receive, request._send)
+        except Exception as e:
+            print(f"⚠️ 메시지 처리 중 에러 (정상적인 방어일 수 있음): {e}")
+        
+        # 여기서 None을 반환하면 에러가 납니다.
+        # "이미 처리했음"을 반환해야 서버가 안 죽습니다.
+        return AlreadyHandledResponse()
 
-    async def handle_root(request):
-        print(f"👋 [헬스 체크] 루트 경로 접속 (GET /)")
-        return JSONResponse({"status": "ok", "message": "BusRam MCP is live!"})
-
+    # 2. 웹 서버 설정
     middleware = [
         Middleware(
             CORSMiddleware,
@@ -97,15 +117,11 @@ if __name__ == "__main__":
         debug=True,
         routes=[
             Route("/sse", endpoint=handle_sse_connect, methods=["GET"]),
-            Route("/sse", endpoint=handle_sse_message, methods=["POST"]),
-            # 👇 혹시 /messages로 찌를까봐 이것도 열어둠
-            Route("/messages", endpoint=handle_sse_message, methods=["POST"]),
-            Route("/", endpoint=handle_root, methods=["GET"])
+            Route("/sse", endpoint=handle_sse_message, methods=["POST"])
         ],
         middleware=middleware
     )
 
     port = int(os.environ.get("PORT", 8000))
-    print(f"🚀 만능 서버 시작! (0.0.0.0:{port})")
-    # proxy_headers=True 추가 (Render 같은 클라우드 환경 필수)
-    uvicorn.run(starlette_app, host="0.0.0.0", port=port, proxy_headers=True)
+    print(f"🚀 [Crash 방지 패치 완료] 서버 시작 (0.0.0.0:{port})")
+    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
