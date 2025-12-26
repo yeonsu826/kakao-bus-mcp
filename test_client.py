@@ -3,8 +3,8 @@ from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
 # 👇 여기에 님의 Render 주소를 넣으세요 (뒤에 /sse 꼭 붙이기!)
-# 예: "https://kakao-bus-mcp-xxxx.onrender.com/sse"
-SERVER_URL = "https://kakao-bus-mcp.onrender.com/sse"
+# 예: "https://kakao-bus-mcp-xxxx.onrender.com/mcp"
+SERVER_URL = "https://kakao-bus-mcp.onrender.com/mcp"
 
 async def run_test():
     print(f"🔌 서버에 접속 시도 중... ({SERVER_URL})")
