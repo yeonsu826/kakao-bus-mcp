@@ -1,7 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 import requests
 import urllib.parse
-import uvicorn
+import os
 
 # 1. 서버 이름 설정
 mcp = FastMCP("BusAlert")
@@ -20,12 +20,9 @@ def search_station(keyword: str) -> str:
     Args:
         keyword: 검색할 정류장 이름 (예: 강남역)
     """
-    # 국토교통부 정류소 검색 API
+    # [수정] https로 변경됨
     url = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getSttnNoList"
     
-    # 1005번 버스는 경기(31) 버스지만 서울(11) 정류장에도 섭니다.
-    # 정확도를 위해 서울(11)과 경기(31)를 모두 검색해보는 게 좋습니다.
-    # 일단 서울(11) 기준으로 검색합니다.
     params = {
         "serviceKey": DECODING_KEY,
         "cityCode": "11", # 서울
@@ -42,14 +39,13 @@ def search_station(keyword: str) -> str:
         if not items:
             return "검색 결과가 없습니다."
             
-        # 리스트가 아니면 리스트로 변환 (데이터가 1개일 때 에러 방지)
         if isinstance(items, dict):
             items = [items]
             
-        result = f"🔍 '{keyword}' 검색 결과:\n"
+        result = f"'{keyword}' 검색 결과:\n"
         for item in items:
             name = item.get('nodeNm')
-            node_id = item.get('nodeid') # 중요: 이게 있어야 도착정보 조회 가능
+            node_id = item.get('nodeid') 
             ars_id = item.get('nodeno')
             result += f"- {name} (ID: {node_id}) / 정류장번호: {ars_id}\n"
             
@@ -66,7 +62,7 @@ def check_arrival(city_code: str, station_id: str) -> str:
         city_code: 도시 코드 (서울: 11, 경기: 31, 세종: 12 등)
         station_id: search_station에서 찾은 정류장 ID (예: DJB8001793)
     """
-    # 아까 성공한 국토교통부 도착 정보 API (오타 수정된 버전!)
+    # [수정] https로 변경됨
     url = "https://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList"
     
     params = {
@@ -88,13 +84,12 @@ def check_arrival(city_code: str, station_id: str) -> str:
         if isinstance(items, dict):
             items = [items]
             
-        result = f"🚌 정류장(ID:{station_id}) 도착 정보:\n"
+        result = f"정류장(ID:{station_id}) 도착 정보:\n"
         for item in items:
-            bus_num = item.get('routeno') # 버스 번호
-            left_station = item.get('arrprevstationcnt') # 남은 정거장 수
-            left_time = item.get('arrtime') # 남은 시간(초)
+            bus_num = item.get('routeno') 
+            left_station = item.get('arrprevstationcnt') 
+            left_time = item.get('arrtime') 
             
-            # 초를 분으로 변환
             min_left = int(left_time) // 60
             
             result += f"- [{bus_num}번] {min_left}분 후 도착 ({left_station}정거장 전)\n"
@@ -103,13 +98,36 @@ def check_arrival(city_code: str, station_id: str) -> str:
 
     except Exception as e:
         return f"도착 정보 조회 실패: {str(e)}"
-    
+
 
 if __name__ == "__main__":
-    import os
-    # 1. 렌더(Render)가 제공하는 포트 번호를 받아옵니다. (없으면 8000)
+    import uvicorn
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    
+    # 1. FastMCP 내부의 진짜 서버 객체를 꺼냅니다.
+    # (에러 로그가 알려준 _mcp_server 속성을 사용합니다)
+    server = mcp._mcp_server
+
+    async def handle_sse(request):
+        # SSE 통신을 위한 연결 통로 설정
+        transport = SseServerTransport("/sse")
+        async with transport.connect_sse(request.scope, request.receive, request._send) as streams:
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+
+    # 2. 웹 서버(Starlette)를 직접 만듭니다.
+    starlette_app = Starlette(
+        debug=True,
+        routes=[Route("/sse", endpoint=handle_sse)]
+    )
+
+    # 3. Render에서 주는 포트 번호를 받습니다.
     port = int(os.environ.get("PORT", 8000))
     
-    # 2. '0.0.0.0'으로 설정해야 외부(카카오)에서 접속할 수 있습니다.
-    # 직접 실행 명령을 내립니다.
-    mcp.run(transport='sse', host='0.0.0.0', port=port)
+    print(f"Render 배포용 서버 시작! (0.0.0.0:{port})")
+    
+    # 4. 강제로 0.0.0.0 주소로 실행합니다.
+    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
