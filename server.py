@@ -8,8 +8,7 @@ mcp = FastMCP("BusRam")
 
 # 2. 키 설정
 ENCODING_KEY = "ezGwhdiNnVtd%2BHvkfiKgr%2FZ4r%2BgvfeUIRz%2FdVqEMTaJuAyXxGiv0pzK0P5YT37c4ylzS7kI%2B%2FpJFoYr9Ce%2BTDg%3D%3D"
-# requests의 params를 쓸 때는 반드시 [Decoding Key]를 써야 합니다.
-DECODING_KEY = urllib.parse.unquote(ENCODING_KEY)
+DECODING_KEY = "ezGwhdiNnVtd+HvkfiKgr/Z4r+gvfeUIRz/dVqEMTaJuAyXxGiv0pzK0P5YT37c4ylzS7kI+/pJFoYr9Ce+TDg=="
 
 @mcp.tool(description="정류장 이름을 검색해서 ID와 ARS 번호를 찾습니다. 사용자가 '강남역' 등을 물어볼 때 사용합니다.")
 def search_station(keyword: str) -> str:
